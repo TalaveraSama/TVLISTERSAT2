@@ -14,6 +14,9 @@ Restart=on-failure
 RestartSec=2
 User=mini-astra
 Group=mini-astra
+# Los dispositivos /dev/dvb/* son root:video. Sin esto, abrir el adaptador
+# falla con "Permission denied" y el escaneo devuelve cero canales.
+SupplementaryGroups=video audio
 RuntimeDirectory=mini-astra
 WorkingDirectory=/var/lib/mini-astra
 Environment=MINI_ASTRA_STATE=/var/lib/mini-astra/streams.json

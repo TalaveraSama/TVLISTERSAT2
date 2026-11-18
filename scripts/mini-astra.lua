@@ -275,6 +275,197 @@ local function start_stream(stream)
 end
 
 --------------------------------------------------------------------------
+-- adaptadores DVB y escaneo de transponder
+--------------------------------------------------------------------------
+
+local scan = { status = "idle", services = {}, started = 0, config = nil }
+local scan_mods = {}
+
+local function adapters_list()
+    if not dvbls then return {} end
+    local ok, res = pcall(dvbls)
+    if ok and type(res) == "table" then return res end
+    return {}
+end
+
+local function adapter_exists(index)
+    for _, item in ipairs(adapters_list()) do
+        if tonumber(item.adapter) == index then return true end
+    end
+    return false
+end
+
+local function dvb_address(cfg, pnr)
+    return string.format("dvb://%d-%s-%d#pnr=%d&adapter=%d&type=%s",
+        cfg.frequency, cfg.polarization, cfg.symbolrate, pnr, cfg.adapter, cfg.type)
+end
+
+local function scan_add(pnr)
+    for _, service in ipairs(scan.services) do
+        if service.pnr == pnr then return service end
+    end
+    local entry = { pnr = pnr, name = "", provider = "" }
+    scan.services[#scan.services + 1] = entry
+    return entry
+end
+
+local function scan_on_data(data)
+    if type(data) ~= "table" or not scan.config then return end
+
+    if data.psi == "pat" and data.programs then
+        for _, program in ipairs(data.programs) do
+            local pnr = tonumber(program.pnr)
+            if pnr and pnr > 0 then scan_add(pnr) end
+        end
+
+    elseif data.psi == "sdt" and data.services then
+        for _, service in ipairs(data.services) do
+            local pnr = tonumber(service.sid)
+            if pnr and pnr > 0 then
+                local entry = scan_add(pnr)
+                for _, descriptor in ipairs(service.descriptors or {}) do
+                    if descriptor.type_name == "service" then
+                        entry.name = descriptor.service_name or entry.name
+                        entry.provider = descriptor.service_provider or entry.provider
+                    end
+                end
+            end
+        end
+
+    elseif data.analyze and data.total then
+        scan.on_air = data.on_air
+        scan.bitrate = data.total.bitrate
+    end
+end
+
+local function scan_stop()
+    scan_mods.analyze = nil
+    scan_mods.input = nil
+    collectgarbage()
+end
+
+local function scan_start(opts)
+    local adapter = tonumber(opts.adapter or 0)
+    if not adapter_exists(adapter) then
+        return false, "adaptador " .. tostring(adapter) .. " no detectado (usa dvbls)"
+    end
+
+    local frequency = tonumber(opts.frequency)
+    local symbolrate = tonumber(opts.symbolrate)
+    if not frequency or frequency <= 0 then return false, "frecuencia inválida" end
+    if not symbolrate or symbolrate <= 0 then return false, "symbolrate inválido" end
+
+    local polarization = (opts.polarization or "h"):lower()
+    if polarization ~= "h" and polarization ~= "v" then
+        return false, "polarización debe ser h o v"
+    end
+
+    local dvb_type = (opts.type or "S2"):upper()
+
+    if scan.status == "running" then return false, "ya hay un escaneo en curso" end
+
+    scan_stop()
+
+    scan.services = {}
+    scan.on_air = nil
+    scan.bitrate = nil
+    scan.config = {
+        adapter = adapter, frequency = frequency, symbolrate = symbolrate,
+        polarization = polarization, type = dvb_type,
+        diseqc = tonumber(opts.diseqc) or 0,
+        timeout = tonumber(opts.timeout) or 12,
+    }
+
+    local ok, err = pcall(function()
+        scan_mods.input = dvb_input({
+            adapter = adapter,
+            type = dvb_type,
+            frequency = frequency,
+            symbolrate = symbolrate,
+            polarization = polarization,
+            diseqc = tonumber(opts.diseqc) or 0,
+            timeout = 3,
+        })
+        if not scan_mods.input then error("no se pudo abrir el adaptador") end
+        scan_mods.analyze = analyze({
+            upstream = scan_mods.input:stream(),
+            name = "scan",
+            callback = scan_on_data,
+        })
+    end)
+
+    if not ok then
+        scan_stop()
+        scan.status = "error"
+        scan.error = tostring(err)
+        return false, scan.error
+    end
+
+    scan.status = "running"
+    scan.error = nil
+    scan.started = os.time()
+
+    scan_mods.timer = timer({
+        interval = 1,
+        callback = function(t)
+            if scan.status ~= "running" then
+                t:close()
+                return
+            end
+            if os.time() - scan.started >= scan.config.timeout then
+                scan.status = "done"
+                scan_mods.timer = nil
+                t:close()
+                scan_stop()
+            end
+        end,
+    })
+
+    return true
+end
+
+local function adapters_json()
+    local parts = {}
+    for _, item in ipairs(adapters_list()) do
+        parts[#parts + 1] = table.concat({
+            '{"adapter":', tostring(tonumber(item.adapter) or 0),
+            ',"device":', tostring(tonumber(item.device) or 0),
+            ',"type":', js(item.type or ""),
+            ',"frontend":', js(item.frontend or ""),
+            ',"busy":', tostring(item.busy == true),
+            ',"error":', js(item.error or ""),
+            '}',
+        })
+    end
+    return "[" .. table.concat(parts, ",") .. "]"
+end
+
+local function scan_json()
+    local parts = {}
+    for index, service in ipairs(scan.services) do
+        local address = ""
+        if scan.config then address = dvb_address(scan.config, service.pnr) end
+        parts[#parts + 1] = table.concat({
+            '{"pnr":', tostring(service.pnr),
+            ',"name":', js(service.name or ""),
+            ',"provider":', js(service.provider or ""),
+            ',"address":', js(address),
+            '}',
+        })
+    end
+    local elapsed = 0
+    if scan.started > 0 then elapsed = os.time() - scan.started end
+    return table.concat({
+        '{"status":', js(scan.status),
+        ',"elapsed":', tostring(elapsed),
+        ',"on_air":', tostring(scan.on_air == true),
+        ',"bitrate":', tostring(tonumber(scan.bitrate) or 0),
+        ',"error":', js(scan.error or ""),
+        ',"services":[', table.concat(parts, ","), ']}',
+    })
+end
+
+--------------------------------------------------------------------------
 -- serializacion
 --------------------------------------------------------------------------
 
@@ -565,6 +756,7 @@ local function index_html()
   <a href="/api/v1/status">Log</a>
   <span class="search">Click or press 'S' to search…</span>
   <span class="right">
+    <a href="#" onclick="openAdapter();return false;">New Adapter</a>
     <a href="#" onclick="newStream();return false;">New Stream</a>
     <a href="/api/v1/status">View</a>
   </span>
@@ -609,10 +801,38 @@ local function index_html()
   </div>
 </div>
 
+<div class="overlay" id="adapterOverlay">
+  <div class="editor">
+    <div class="tabs"><span class="active">Adapter</span><span>Scan</span></div>
+    <div class="body">
+      <div class="field"><span>Adaptador detectado</span><select id="a_sel"></select></div>
+      <div class="field"><span>Tipo</span>
+        <select id="a_type">
+          <option value="S2">DVB-S2</option><option value="S">DVB-S</option>
+          <option value="T2">DVB-T2</option><option value="T">DVB-T</option>
+          <option value="C">DVB-C</option>
+        </select>
+      </div>
+      <div class="field"><span>Frecuencia (MHz)</span><input type="text" id="a_freq" placeholder="11262"></div>
+      <div class="field"><span>Symbolrate (kSym/s)</span><input type="text" id="a_sr" placeholder="30000"></div>
+      <div class="field"><span>Polarización</span>
+        <select id="a_pol"><option value="h">Horizontal</option><option value="v">Vertical</option></select>
+      </div>
+      <p class="hint">El escaneo sintoniza el transponder, lee PAT/SDT y devuelve los canales con su PNR.</p>
+      <div class="listhead"><h4>Canales encontrados</h4><span class="meta" id="scan_state">—</span></div>
+      <div id="scan_rows"></div>
+    </div>
+    <div class="msg" id="amsg"></div>
+    <div class="footer">
+      <button onclick="startScan()">Scan</button>
+      <button onclick="closeAdapter()">Close</button>
+    </div>
+  </div>
+</div>
+
 <script>
 var current = null;
 var list = [];
-
 function el(id) { return document.getElementById(id); }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function(c) {
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
@@ -696,6 +916,102 @@ function editStream(id) {
 
 function closeEditor() { el('overlay').classList.remove('open'); }
 
+/* ---- adaptador y escaneo ---- */
+var scanTimer = null;
+
+function openAdapter() {
+  el('adapterOverlay').classList.add('open');
+  el('amsg').className = 'msg';
+  el('scan_rows').innerHTML = '';
+  el('scan_state').textContent = '—';
+  fetch('/api/v1/adapters', {cache:'no-store'}).then(function(r){ return r.json(); })
+    .then(function(d){
+      var sel = el('a_sel');
+      sel.innerHTML = '';
+      if (!d || !d.length) {
+        sel.innerHTML = '<option value="">sin adaptadores DVB detectados</option>';
+        el('scan_state').textContent = 'sin hardware';
+        return;
+      }
+      d.forEach(function(a){
+        var o = document.createElement('option');
+        o.value = a.adapter;
+        o.textContent = 'adapter' + a.adapter + ' · ' + (a.type || '?') +
+                        (a.frontend ? ' · ' + a.frontend : '') + (a.busy ? ' · ocupado' : '');
+        sel.appendChild(o);
+      });
+    })
+    .catch(function(){ el('scan_state').textContent = 'error consultando adaptadores'; });
+}
+
+function closeAdapter() {
+  el('adapterOverlay').classList.remove('open');
+  if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
+}
+
+function startScan() {
+  var body = {
+    adapter: el('a_sel').value,
+    type: el('a_type').value,
+    frequency: el('a_freq').value,
+    symbolrate: el('a_sr').value,
+    polarization: el('a_pol').value  };
+  if (!body.adapter && body.adapter !== '0') {
+    el('amsg').className = 'msg bad';
+    el('amsg').textContent = 'no hay adaptador seleccionado';
+    return;
+  }
+  el('amsg').className = 'msg';
+  el('scan_state').textContent = 'iniciando…';
+  fetch('/api/v1/scan', {method:'POST', headers:{'Content-Type':'application/json'},
+                         body: JSON.stringify(body)})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (!d.ok) {
+        el('amsg').className = 'msg bad';
+        el('amsg').textContent = d.message || 'error';
+        el('scan_state').textContent = 'error';
+        return;
+      }
+      pollScan();
+      if (scanTimer) clearInterval(scanTimer);
+      scanTimer = setInterval(pollScan, 1500);
+    })
+    .catch(function(e){ el('amsg').className = 'msg bad'; el('amsg').textContent = 'error: ' + e; });
+}
+
+function pollScan() {
+  fetch('/api/v1/scan', {cache:'no-store'}).then(function(r){ return r.json(); })
+    .then(function(d){
+      el('scan_state').textContent = d.status + ' · ' + d.elapsed + 's · ' +
+        (d.services ? d.services.length : 0) + ' canales';
+      var rows = (d.services || []).map(function(s, i){
+        return '<div class="addr"><input type="text" readonly value="' +
+          esc((s.name || '(sin nombre)') + '  ·  PNR ' + s.pnr) + '">' +
+          '<button class="rm" style="color:#1a73e8;font-size:12px" onclick="useChannel(' + i + ')">add</button></div>';
+      }).join('');
+      el('scan_rows').innerHTML = rows || '<div class="empty">sin canales todavía…</div>';
+      if (d.status !== 'running') { clearInterval(scanTimer); scanTimer = null; }
+      lastScan = d.services || [];
+    })
+    .catch(function(){});
+}
+
+var lastScan = [];
+function useChannel(i) {
+  var s = lastScan[i];
+  if (!s) return;
+  closeAdapter();
+  showEditor({
+    id: 'ch' + s.pnr,
+    name: s.name || ('PNR ' + s.pnr),
+    enabled: true,
+    inputs: [s.address],
+    outputs: [''],
+    description: s.provider || ''
+  });
+}
+
 function payload(action) {
   return { action: action, stream: {
     id: el('f_id').value.trim(),
@@ -744,6 +1060,34 @@ local function on_index(server, client, request)
     response(server, client, 200, "text/html; charset=utf-8", index_html())
 end
 
+local function on_adapters(server, client, request)
+    if not request then return end
+    reply_json(server, client, 200, adapters_json())
+end
+
+local function on_scan(server, client, request)
+    if not request then return end
+
+    if request.method == "POST" then
+        local payload = nil
+        if request.content and json and json.decode then
+            local ok, decoded = pcall(json.decode, request.content)
+            if ok then payload = decoded end
+        end
+        if type(payload) ~= "table" then
+            reply_json(server, client, 400, '{"ok":false,"message":"JSON inválido"}')
+            return
+        end
+        local ok, message = scan_start(payload)
+        reply_json(server, client, ok and 200 or 400,
+            '{"ok":' .. tostring(ok) .. ',"message":' .. js(message or "") ..
+            ',"scan":' .. scan_json() .. '}')
+        return
+    end
+
+    reply_json(server, client, 200, scan_json())
+end
+
 local function on_not_found(server, client, request)
     if not request then return end
     reply_json(server, client, 404,
@@ -767,6 +1111,8 @@ http_server({
         { "/readyz", on_ready },
         { "/api/v1/status", on_status },
         { "/api/v1/streams", on_api_streams },
+        { "/api/v1/adapters", on_adapters },
+        { "/api/v1/scan", on_scan },
         { "/*", on_not_found },
     },
 })

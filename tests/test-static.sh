@@ -30,6 +30,12 @@ fi
 # getifaddrs() requiere AF_NETLINK: sin ella el servicio aborta (SIGABRT).
 grep -q 'AF_NETLINK' "$ROOT/systemd/mini-astra.service" || {
     echo 'systemd unit must allow AF_NETLINK.' >&2; exit 1; }
+# /dev/dvb/* es root:video; sin el grupo el escaneo no abre el adaptador.
+grep -q 'SupplementaryGroups=.*video' "$ROOT/systemd/mini-astra.service" || {
+    echo 'systemd unit must join the video group for DVB.' >&2; exit 1; }
+for route in /api/v1/adapters /api/v1/scan; do
+    grep -q "$route" "$ROOT/scripts/mini-astra.lua" || { echo "Missing route: $route" >&2; exit 1; }
+done
 for directive in 'ExecStart=' 'Restart=on-failure' 'NoNewPrivileges=true' 'User=mini-astra'; do
     grep -q "$directive" "$ROOT/systemd/mini-astra.service" || { echo "Missing systemd directive: $directive" >&2; exit 1; }
 done

@@ -167,6 +167,71 @@ Los streams se guardan en `/var/lib/mini-astra/streams.json` y se rearrancan al 
 - Las pestañas `Groups`, `Service`, `Remap`, `Backup`, `EPG` y `Advanced` se muestran por compatibilidad visual pero no están implementadas.
 - Una sola entrada por stream (la primera de la lista); el resto se conserva como configuración.
 
+## Adaptadores DVB y escaneo de transponder
+
+Un adaptador no es un stream: primero se sintoniza el transponder, se leen PAT/SDT y de ahí salen los canales (PNR) con los que se crea cada stream.
+
+### Requisitos
+
+- Tarjeta DVB reconocida por el kernel (`/dev/dvb/adapterN`).
+- El servicio necesita acceso a `/dev/dvb/*`, que es `root:video`. La unidad ya incluye:
+
+```ini
+SupplementaryGroups=video audio
+```
+
+Sin eso, `dvbls()` devuelve `failed to open [Permission denied]` y el escaneo no encuentra canales.
+
+### Comprobar adaptadores
+
+```bash
+curl -s http://127.0.0.1:8000/api/v1/adapters | python3 -m json.tool
+```
+
+```json
+[{"adapter":0,"device":0,"type":"S","frontend":"TurboSight TBS 6904se DVB-S/S2/S2x","busy":false}]
+```
+
+### Escanear un transponder
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/scan \
+  -H 'Content-Type: application/json' \
+  -d '{"adapter":0,"type":"S2","frequency":"11262","symbolrate":"30000",
+       "polarization":"h","diseqc":0,"timeout":14}'
+
+# consultar el progreso y el resultado
+curl -s http://127.0.0.1:8000/api/v1/scan
+```
+
+```json
+{"status":"done","elapsed":14,"on_air":true,"bitrate":27500,
+ "services":[{"pnr":1937,"name":"America TV HD","provider":"",
+              "address":"dvb://11262-h-30000#pnr=1937&adapter=0&type=S2"}]}
+```
+
+El campo `address` ya está listo para pegarlo como entrada del stream.
+
+### En el panel
+
+`New Adapter` → elegir adaptador, tipo, frecuencia, symbolrate, polarización y DiSEqC → `Scan`. Los canales aparecen con un botón `add` que abre el editor de stream con la entrada ya rellenada; solo falta indicar la salida.
+
+### Si no hay lock
+
+`fe has no lock` en el journal significa que el sintonizador no engancha señal. Comprueba, en este orden:
+
+1. Cable de antena conectado al puerto correcto de la tarjeta.
+2. Alimentación del LNB: la polarización fija la tensión (H=18 V, V=13 V); 11262 MHz usa banda baja (22 kHz OFF).
+3. Conmutador DiSEqC: prueba `diseqc` 0–4.
+4. Puntería del plato y transponder correcto para ese satélite.
+5. Que otra instancia (Astra comercial, tvheadend, etc.) no esté ocupando el frontend.
+
+Sin lock el escaneo termina con `services: []`; no es un fallo del panel.
+
+### Usar otro servidor como origen
+
+Si la señal está en otra máquina, no hace falta tarjeta aquí: crea el stream con entrada `udp://` o `rtp://` apuntando al flujo que publica ese servidor.
+
 ## Acceso desde el navegador
 
 La configuración incluye una página de estado en `/`. Por defecto el servicio solo escucha en `127.0.0.1`, así que primero hay que abrirlo a la red local mediante un drop-in:
