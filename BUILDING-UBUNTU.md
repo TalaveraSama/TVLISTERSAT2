@@ -109,6 +109,49 @@ La interfaz web/API moderna de Astra Cesbo 5.65 no está incluida en esta fuente
 - El wrapper no intenta instalar ni retirar licencias, ni ejecutar código descargado de Cesbo.
 - En este entorno Windows se validaron sintaxis shell y pruebas estáticas; la compilación y prueba de sockets deben ejecutarse en Ubuntu 22.04/24.04.
 
+## Acceso desde el navegador
+
+La configuración incluye una página de estado en `/`. Por defecto el servicio solo escucha en `127.0.0.1`, así que primero hay que abrirlo a la red local mediante un drop-in:
+
+```ini
+# /etc/systemd/system/mini-astra.service.d/20-bind.conf
+[Service]
+Environment=MINI_ASTRA_BIND=0.0.0.0
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart mini-astra
+```
+
+Comprueba que escucha en todas las interfaces:
+
+```bash
+ss -ltn | grep ':8000'
+```
+
+Y abre en el navegador, sustituyendo la IP por la del servidor:
+
+```text
+http://192.168.1.22:8000/
+```
+
+La página muestra versión, estado y la tabla de streams, y se refresca sola cada 3 segundos. Datos disponibles:
+
+| Ruta | Contenido |
+|---|---|
+| `/` | Panel HTML de estado |
+| `/healthz` | `ok` en texto plano |
+| `/readyz` | `{"status":"ready"}` |
+| `/api/v1/status` | Estado completo en JSON |
+| `/api/v1/streams` | Lista de streams en JSON |
+
+Aviso: el panel no tiene autenticación. Es válido para una LAN de confianza; no lo expongas a Internet sin poner un proxy con autenticación delante. Si `ufw` está activo, abre el puerto:
+
+```bash
+sudo ufw allow 8000/tcp
+```
+
 ## Diagnóstico
 
 - `configure.sh` genera `Makefile` y `config.h`; ambos son artefactos locales ignorados por Git.
