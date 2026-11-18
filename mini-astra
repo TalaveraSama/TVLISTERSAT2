@@ -1,0 +1,80 @@
+#!/bin/sh
+set -eu
+
+PREFIX=${MINI_ASTRA_PREFIX:-/usr/local}
+BIN=${MINI_ASTRA_BIN:-$PREFIX/bin/astra-mini}
+CONFIG=${MINI_ASTRA_CONFIG:-/etc/mini-astra/mini-astra.lua}
+SERVICE=${MINI_ASTRA_SERVICE:-mini-astra}
+UNIT_DIR=${MINI_ASTRA_UNIT_DIR:-/etc/systemd/system}
+STATE_DIR=${MINI_ASTRA_STATE_DIR:-/var/lib/mini-astra}
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+usage() {
+    cat <<EOF
+Usage: $0 {build|install|init|start|stop|restart|reload|status|logs|run|check|version|health|uninstall}
+
+Environment:
+  MINI_ASTRA_PREFIX  install prefix (default: /usr/local)
+  MINI_ASTRA_BIN     executable path (default: PREFIX/bin/astra-mini)
+  MINI_ASTRA_CONFIG  Lua config path (default: /etc/mini-astra/mini-astra.lua)
+  MINI_ASTRA_UNIT_DIR systemd unit directory (default: /etc/systemd/system)
+  MINI_ASTRA_STATE_DIR state directory (default: /var/lib/mini-astra)
+EOF
+}
+
+build() {
+    cd "$SCRIPT_DIR"
+    ./configure.sh --bin="$BIN"
+    make -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
+}
+
+install_files() {
+    install -d "$(dirname "$BIN")" "$(dirname "$CONFIG")" "$STATE_DIR"
+    if id mini-astra >/dev/null 2>&1; then
+        chown mini-astra:mini-astra "$STATE_DIR"
+    fi
+    install -m 0755 "$SCRIPT_DIR/astra" "$BIN"
+    install -m 0644 "$SCRIPT_DIR/scripts/mini-astra.lua" "$CONFIG"
+    if id mini-astra >/dev/null 2>&1; then
+        chown mini-astra:mini-astra "$CONFIG"
+    fi
+}
+
+unit_path="$UNIT_DIR/$SERVICE.service"
+
+init_service() {
+    if ! id mini-astra >/dev/null 2>&1; then
+        echo "Creating system user mini-astra"
+        useradd --system --home-dir /var/lib/mini-astra --no-create-home \
+            --shell /usr/sbin/nologin mini-astra
+    fi
+    install -d -o mini-astra -g mini-astra "$STATE_DIR" "$(dirname "$CONFIG")"
+    install -m 0644 "$SCRIPT_DIR/systemd/mini-astra.service" "$unit_path"
+    systemctl daemon-reload
+    echo "Created $unit_path"
+}
+
+case "${1:-}" in
+    build) build ;;
+    install) install_files ;;
+    init) init_service ;;
+    start|stop|restart|status) systemctl "$1" "$SERVICE" ;;
+    reload) systemctl reload "$SERVICE" 2>/dev/null || systemctl kill -s HUP "$SERVICE" ;;
+    logs) journalctl -fu "$SERVICE" ;;
+    run) exec "$BIN" "${2:-$CONFIG}" ;;
+    check)
+        test -r "${2:-$CONFIG}" || { echo "Config not found: ${2:-$CONFIG}" >&2; exit 1; }
+        echo "Config readable: ${2:-$CONFIG}"
+        ;;
+    version) exec "$BIN" --version ;;
+    health)
+        command -v curl >/dev/null 2>&1 || { echo "curl is required" >&2; exit 1; }
+        curl --fail --silent --show-error "${2:-http://127.0.0.1:8000/health}"
+        ;;
+    uninstall)
+        systemctl disable --now "$SERVICE" 2>/dev/null || true
+        rm -f "$unit_path"
+        systemctl daemon-reload
+        ;;
+    *) usage; exit 2 ;;
+esac

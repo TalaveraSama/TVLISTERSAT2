@@ -128,7 +128,9 @@ if [ $ARG_DEBUG -ne 0 ] ; then
     APP_STRIP=":"
 fi
 
-CFLAGS="$CFLAGS_DEBUG -I$SRCDIR -Wall -Wextra -Wstrict-prototypes -pedantic -fno-builtin -std=iso9899:1999 -D_GNU_SOURCE"
+# GCC moderno (Ubuntu 22.04/24.04) es más estricto con -pedantic y el C99 ISO antiguo.
+# Mantener C99 compatible, pero permitir extensiones POSIX/GNU requeridas por Linux.
+CFLAGS="$CFLAGS_DEBUG -I$SRCDIR -Wall -Wextra -Wstrict-prototypes -fno-builtin -std=gnu99 -D_GNU_SOURCE"
 
 if [ -n "$ARG_CFLAGS" ] ; then
     CFLAGS="$CFLAGS $ARG_CFLAGS"

@@ -1,0 +1,26 @@
+[Unit]
+Description=Mini Astra MPEG-TS service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/astra-mini /etc/mini-astra/mini-astra.lua
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=2
+User=mini-astra
+Group=mini-astra
+RuntimeDirectory=mini-astra
+WorkingDirectory=/var/lib/mini-astra
+Environment=MINI_ASTRA_STATE=/var/lib/mini-astra/streams.json
+NoNewPrivileges=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/mini-astra /run/mini-astra
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
