@@ -2,6 +2,29 @@
 
 Este repositorio es una instantánea antigua de Astra 4.4.187 (2015), no el binario propietario Astra Cesbo 5.65. Se puede compilar como una base de streaming MPEG-TS/Lua, pero no es compatible con la API, interfaz web, licencia ni todas las funciones de Cesbo 5.65.
 
+## Instalación automática desde GitHub
+
+Para compilar e instalar la versión de la rama `main`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/TalaveraSama/TVLISTERSAT2/main/install.sh -o /tmp/mini-astra-install.sh
+sudo bash /tmp/mini-astra-install.sh
+```
+
+Para una release concreta, cambia `MINI_ASTRA_REF` por el tag publicado:
+
+```bash
+sudo MINI_ASTRA_REF=v0.1.0 bash /tmp/mini-astra-install.sh
+```
+
+El instalador requiere Ubuntu 22.04 o 24.04 x86_64, `systemd`, red disponible y permisos de root. Descarga el código, ejecuta las pruebas estáticas, compila localmente y habilita `mini-astra.service`. No descarga binarios ejecutables de terceros.
+
+Para desinstalar sin borrar el estado:
+
+```bash
+sudo curl -fsSL https://raw.githubusercontent.com/TalaveraSama/TVLISTERSAT2/main/uninstall.sh | bash
+```
+
 ## Dependencias
 
 ```bash

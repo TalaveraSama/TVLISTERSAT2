@@ -22,6 +22,23 @@ Las opciones de los módulos son las de esta versión heredada; no deben confund
 
 Para validar los archivos sin hardware ni Ubuntu local, ejecuta `sh tests/test-static.sh`. La guía completa de despliegue y pruebas está en [`BUILDING-UBUNTU.md`](BUILDING-UBUNTU.md) y [`tests/README.md`](tests/README.md).
 
+## Instalación desde GitHub
+
+El instalador compila desde el tag `main` y registra el servicio systemd:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/TalaveraSama/TVLISTERSAT2/main/install.sh -o /tmp/mini-astra-install.sh
+sudo bash /tmp/mini-astra-install.sh
+```
+
+Para instalar una versión publicada, usa un tag explícito:
+
+```bash
+sudo MINI_ASTRA_REF=v0.1.0 bash /tmp/mini-astra-install.sh
+```
+
+El workflow [`release.yml`](.github/workflows/release.yml) genera paquetes separados para Ubuntu 22.04 y 24.04. Cada paquete contiene el binario, configuración, unidad systemd, instalador y suma SHA-256.
+
 ## Referencia oficial actual
 
 La documentación de Cesbo describe un binario x86_64 con licencia, servicio systemd, interfaz web por defecto en el puerto 8000 y gestión de streams/adaptadores. Consulta https://astra.cesbo.com/en/quick-start/ para el producto oficial.

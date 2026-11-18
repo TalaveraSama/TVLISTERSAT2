@@ -6,6 +6,9 @@ $required = @(
     'BUILDING-UBUNTU.md',
     'configure.sh',
     'mini-astra',
+    'install.sh',
+    'uninstall.sh',
+    '.github/workflows/release.yml',
     'scripts/mini-astra.lua',
     'systemd/mini-astra.service'
 )
