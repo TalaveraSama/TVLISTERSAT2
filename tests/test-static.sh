@@ -14,6 +14,11 @@ done
 
 grep -q 'upstream = input:stream()' "$ROOT/examples/relay.lua"
 grep -q 'timer({' "$ROOT/examples/relay.lua"
+grep -q 'streams.json' "$ROOT/scripts/mini-astra.lua"
+if grep -q 'http_static' "$ROOT/scripts/mini-astra.lua"; then
+    echo 'Control configuration must not register http_static.' >&2
+    exit 1
+fi
 for directive in 'ExecStart=' 'Restart=on-failure' 'NoNewPrivileges=true' 'User=mini-astra'; do
     grep -q "$directive" "$ROOT/systemd/mini-astra.service" || { echo "Missing systemd directive: $directive" >&2; exit 1; }
 done

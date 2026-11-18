@@ -29,7 +29,7 @@ build() {
 }
 
 install_files() {
-    install -d "$(dirname "$BIN")" "$(dirname "$CONFIG")" "$STATE_DIR"
+    install -d "$(dirname "$BIN")" "$(dirname "$CONFIG")" "$STATE_DIR" "$STATE_DIR/www"
     if id mini-astra >/dev/null 2>&1; then
         chown mini-astra:mini-astra "$STATE_DIR"
     fi

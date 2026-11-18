@@ -31,6 +31,9 @@ foreach ($route in @('/healthz','/readyz','/api/v1/status','/api/v1/streams')) {
 $relay = Get-Content (Join-Path $root 'examples/relay.lua') -Raw
 if ($relay -notmatch 'upstream = input:stream\(\)') { throw 'Relay has no upstream connection' }
 if ($relay -notmatch 'timer\(') { throw 'Relay has no timer keepalive' }
+$config = Get-Content (Join-Path $root 'scripts/mini-astra.lua') -Raw
+if ($config -notmatch 'streams\.json') { throw 'Config does not use streams.json state' }
+if ($config -match 'http_static') { throw 'Control config must not register http_static' }
 
 $unit = Get-Content (Join-Path $root 'systemd/mini-astra.service') -Raw
 foreach ($directive in @('ExecStart=','Restart=on-failure','NoNewPrivileges=true','User=mini-astra','MINI_ASTRA_STATE=')) {

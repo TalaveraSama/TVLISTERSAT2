@@ -4,8 +4,8 @@
 
 local bind_addr = os.getenv("MINI_ASTRA_BIND") or "127.0.0.1"
 local bind_port = tonumber(os.getenv("MINI_ASTRA_PORT") or "8000")
-local web_root = os.getenv("MINI_ASTRA_WEB_ROOT") or "."
-local config_path = os.getenv("MINI_ASTRA_STATE") or "/var/lib/mini-astra/streams.lua"
+local web_root = os.getenv("MINI_ASTRA_WEB_ROOT") or "/var/lib/mini-astra/www"
+local config_path = os.getenv("MINI_ASTRA_STATE") or "/var/lib/mini-astra/streams.json"
 
 local streams = {
     {
@@ -98,7 +98,6 @@ http_server({
         { "/readyz", on_ready },
         { "/api/v1/status", on_status },
         { "/api/v1/streams", on_streams },
-        { "/*", http_static({ path = web_root }) },
     },
 })
 

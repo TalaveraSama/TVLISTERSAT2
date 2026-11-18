@@ -17,7 +17,9 @@ Para una release concreta, cambia `MINI_ASTRA_REF` por el tag publicado:
 sudo MINI_ASTRA_REF=v0.1.0 bash /tmp/mini-astra-install.sh
 ```
 
-El instalador requiere Ubuntu 22.04 o 24.04 x86_64, `systemd`, red disponible y permisos de root. Descarga el código, ejecuta las pruebas estáticas, compila localmente y habilita `mini-astra.service`. No descarga binarios ejecutables de terceros.
+El instalador requiere Ubuntu 22.04 o 24.04 x86_64, `systemd`, red disponible y permisos de root. Descarga el código, ejecuta las pruebas estáticas, compila localmente y habilita `mini-astra.service`. No descarga binarios ejecutables de terceros. La ausencia de `libdvbcsa-dev`, `libssl-dev` o `libpq-dev` solo desactiva módulos opcionales; el núcleo UDP/HTTP se compila.
+
+Si una instalación anterior muestra `signal=ABRT`, actualiza el script y la configuración desde `main`, reinstala y reinicia: la configuración de control no debe registrar `http_static` ni apuntar a un directorio inexistente. El hotfix actual usa `/var/lib/mini-astra/streams.json` y `/var/lib/mini-astra/www`.
 
 Para desinstalar sin borrar el estado:
 

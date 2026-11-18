@@ -46,7 +46,7 @@ log "creando usuario y directorios"
 if ! id mini-astra >/dev/null 2>&1; then
     useradd --system --home-dir "$STATE_DIR" --no-create-home --shell /usr/sbin/nologin mini-astra
 fi
-install -d -o mini-astra -g mini-astra "$STATE_DIR" "$CONFIG_DIR" "$(dirname "$BIN")"
+install -d -o mini-astra -g mini-astra "$STATE_DIR" "$STATE_DIR/www" "$CONFIG_DIR" "$(dirname "$BIN")"
 install -m 0755 ./astra "$BIN"
 install -m 0755 ./mini-astra "$CLI"
 install -m 0644 ./scripts/mini-astra.lua "$CONFIG"
