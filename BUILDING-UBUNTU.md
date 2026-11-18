@@ -109,6 +109,64 @@ La interfaz web/API moderna de Astra Cesbo 5.65 no está incluida en esta fuente
 - El wrapper no intenta instalar ni retirar licencias, ni ejecutar código descargado de Cesbo.
 - En este entorno Windows se validaron sintaxis shell y pruebas estáticas; la compilación y prueba de sockets deben ejecutarse en Ubuntu 22.04/24.04.
 
+## Crear streams desde el panel
+
+El panel replica el modelo de creación de Cesbo 5.x: `Enable`, `Name`, `ID`, `Create Multi Program Stream`, `Description`, lista de entradas, lista de salidas y los botones `APPLY`, `CLONE`, `ANALYZE`, `CANCEL`.
+
+Las direcciones usan la misma sintaxis:
+
+| Tipo | Formato | Ejemplo |
+|---|---|---|
+| DVB | `dvb://frecuencia-polarización-simbolrate#pnr=N&adapter=A&type=S2` | `dvb://11262-h-30000#pnr=1937&adapter=0&type=S2` |
+| UDP entrada | `udp://grupo:puerto` | `udp://239.2.2.10:2000` |
+| RTP entrada | `rtp://grupo:puerto` | `rtp://239.2.2.10:2000` |
+| Archivo | `file:///ruta/archivo.ts?loop=1` | `file:///srv/promo.ts?loop=1` |
+| UDP salida | `udp://interfaz@grupo:puerto` | `udp://enp1s0@230.2.2.10:2000` |
+| RTP salida | `rtp://interfaz@grupo:puerto` | `rtp://enp1s0@230.2.2.10:2000` |
+
+La interfaz se resuelve a su IPv4 real mediante `utils.ifaddrs()`; también se acepta una IP directamente.
+
+### Equivalencia con los módulos de 4.4.187
+
+| Dirección | Módulo creado |
+|---|---|
+| `udp://…` / `rtp://…` (entrada) | `udp_input` con `rtp = true/false` |
+| `dvb://…#pnr=N` | `dvb_input` + `channel{ pnr = N }` |
+| `file://…` | `file_input` con `loop` |
+| `udp://iface@…` (salida) | `udp_output` con `localaddr` resuelto |
+
+### API
+
+```bash
+# listar
+curl -s http://192.168.1.22:8000/api/v1/streams
+
+# crear o actualizar (APPLY)
+curl -s -X POST http://192.168.1.22:8000/api/v1/streams \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"save","stream":{
+        "id":"a0jt","name":"America TV HD","enabled":true,
+        "inputs":["dvb://11262-h-30000#pnr=1937&adapter=0&type=S2"],
+        "outputs":["udp://enp1s0@230.2.2.10:2000"]}}'
+
+# validar sin aplicar (ANALYZE)
+curl -s -X POST http://192.168.1.22:8000/api/v1/streams \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"verify","stream":{"id":"a0jt","inputs":["udp://239.2.2.10:2000"],"outputs":[]}}'
+
+# detener / arrancar / clonar / eliminar
+#   "action": "stop" | "start" | "clone" | "delete"
+```
+
+Los streams se guardan en `/var/lib/mini-astra/streams.json` y se rearrancan al iniciar el servicio si están habilitados.
+
+### Límites reales de esta base
+
+- `dvb://` requiere adaptador DVB, drivers y permisos; sin hardware el módulo no entrega señal. Se puede desactivar con `Environment=MINI_ASTRA_DVB=0`.
+- No hay transcodificación, EPG, ni gestión de usuarios.
+- Las pestañas `Groups`, `Service`, `Remap`, `Backup`, `EPG` y `Advanced` se muestran por compatibilidad visual pero no están implementadas.
+- Una sola entrada por stream (la primera de la lista); el resto se conserva como configuración.
+
 ## Acceso desde el navegador
 
 La configuración incluye una página de estado en `/`. Por defecto el servicio solo escucha en `127.0.0.1`, así que primero hay que abrirlo a la red local mediante un drop-in:
