@@ -19,7 +19,19 @@ sudo MINI_ASTRA_REF=v0.1.0 bash /tmp/mini-astra-install.sh
 
 El instalador requiere Ubuntu 22.04 o 24.04 x86_64, `systemd`, red disponible y permisos de root. Descarga el código, ejecuta las pruebas estáticas, compila localmente y habilita `mini-astra.service`. No descarga binarios ejecutables de terceros. La ausencia de `libdvbcsa-dev`, `libssl-dev` o `libpq-dev` solo desactiva módulos opcionales; el núcleo UDP/HTTP se compila.
 
-Si una instalación anterior muestra `signal=ABRT`, actualiza el script y la configuración desde `main`, reinstala y reinicia: la configuración de control no debe registrar `http_static` ni apuntar a un directorio inexistente. El hotfix actual usa `/var/lib/mini-astra/streams.json` y `/var/lib/mini-astra/www`.
+Si una instalación anterior muestra `signal=ABRT`, revisa el journal: la causa más común es `getifaddrs() failed`. Esta versión de Astra llama `utils.ifaddrs()` al arrancar y aborta si falla; `getifaddrs()` necesita `AF_NETLINK`, por lo que la unidad debe incluir:
+
+```ini
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+```
+
+Si el servicio responde una petición y luego muere con `signal=SEGV`, el journal mostrará `asc_socket_set_on_read (sock=0x0)`. Motivo: en esta API el callback de ruta se invoca **dos veces**, la segunda con `request == nil` para avisar del cierre de la conexión; responder en ese caso escribe sobre un socket ya cerrado. Todo handler debe empezar por:
+
+```lua
+if not request then return end
+```
+
+Ambos fallos están cubiertos por `tests/test-static.sh`.
 
 Para desinstalar sin borrar el estado:
 

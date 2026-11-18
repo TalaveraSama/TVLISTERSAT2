@@ -19,6 +19,17 @@ if grep -q 'http_static' "$ROOT/scripts/mini-astra.lua"; then
     echo 'Control configuration must not register http_static.' >&2
     exit 1
 fi
+# El callback se invoca con request == nil al cerrar la conexion: responder
+# en ese caso escribe sobre un socket ya cerrado y provoca SIGSEGV.
+guards=$(grep -c 'if not request then return end' "$ROOT/scripts/mini-astra.lua")
+handlers=$(grep -c '^local function on_' "$ROOT/scripts/mini-astra.lua")
+if [ "$guards" -ne "$handlers" ]; then
+    echo "Unsafe handlers: $guards guards for $handlers handlers." >&2
+    exit 1
+fi
+# getifaddrs() requiere AF_NETLINK: sin ella el servicio aborta (SIGABRT).
+grep -q 'AF_NETLINK' "$ROOT/systemd/mini-astra.service" || {
+    echo 'systemd unit must allow AF_NETLINK.' >&2; exit 1; }
 for directive in 'ExecStart=' 'Restart=on-failure' 'NoNewPrivileges=true' 'User=mini-astra'; do
     grep -q "$directive" "$ROOT/systemd/mini-astra.service" || { echo "Missing systemd directive: $directive" >&2; exit 1; }
 done

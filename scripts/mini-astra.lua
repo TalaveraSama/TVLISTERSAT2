@@ -1,10 +1,14 @@
 -- Mini Astra operational configuration.
 -- Compatible with the embedded Lua API in Astra 4.4.187.
 -- This is an independent control/status layer, not the Cesbo 5.x API.
+--
+-- IMPORTANT: in this API the route callback is invoked twice per connection:
+--   * with a request table  -> serve the response
+--   * with request == nil   -> the connection was closed (do NOT send anything)
+-- Calling server:send() with request == nil writes to an already closed socket.
 
 local bind_addr = os.getenv("MINI_ASTRA_BIND") or "127.0.0.1"
 local bind_port = tonumber(os.getenv("MINI_ASTRA_PORT") or "8000")
-local web_root = os.getenv("MINI_ASTRA_WEB_ROOT") or "/var/lib/mini-astra/www"
 local config_path = os.getenv("MINI_ASTRA_STATE") or "/var/lib/mini-astra/streams.json"
 
 local streams = {
@@ -67,26 +71,31 @@ local function response(server, client, code, content_type, content)
     })
 end
 
-local function on_status(server, client)
+-- Every handler must ignore the close notification (request == nil).
+local function on_status(server, client, request)
+    if not request then return end
     response(server, client, 200, "application/json", status_json())
 end
 
-local function on_streams(server, client)
+local function on_streams(server, client, request)
+    if not request then return end
     response(server, client, 200, "application/json", streams_json())
 end
 
-local function on_health(server, client)
+local function on_health(server, client, request)
+    if not request then return end
     response(server, client, 200, "text/plain; charset=utf-8", "ok\n")
 end
 
-local function on_ready(server, client)
+local function on_ready(server, client, request)
+    if not request then return end
     response(server, client, 200, "application/json", '{"status":"ready"}')
 end
 
-local function save_state()
-    if json and json.save then
-        json.save(config_path, streams)
-    end
+local function on_not_found(server, client, request)
+    if not request then return end
+    response(server, client, 404, "application/json",
+        '{"error":"not found","hint":"/health /api/v1/status /api/v1/streams"}')
 end
 
 http_server({
@@ -98,8 +107,8 @@ http_server({
         { "/readyz", on_ready },
         { "/api/v1/status", on_status },
         { "/api/v1/streams", on_streams },
+        { "/*", on_not_found },
     },
 })
 
-save_state()
 log.info("mini-astra listening on " .. bind_addr .. ":" .. bind_port)

@@ -2,6 +2,9 @@
 Description=Mini Astra MPEG-TS service
 After=network-online.target
 Wants=network-online.target
+# Evita tormentas de reinicio (se observaron 400+ en bucle).
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -15,9 +18,10 @@ RuntimeDirectory=mini-astra
 WorkingDirectory=/var/lib/mini-astra
 Environment=MINI_ASTRA_STATE=/var/lib/mini-astra/streams.json
 Environment=MINI_ASTRA_WEB_ROOT=/var/lib/mini-astra/www
+# AF_NETLINK es obligatorio: getifaddrs() lo usa y sin ella el proceso aborta.
 NoNewPrivileges=true
 CapabilityBoundingSet=
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 ReadWritePaths=/var/lib/mini-astra /run/mini-astra
 PrivateTmp=true
 ProtectSystem=full
