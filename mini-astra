@@ -11,7 +11,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 usage() {
     cat <<EOF
-Usage: $0 {build|install|init|start|stop|restart|reload|status|logs|run|check|version|health|uninstall}
+Usage: $0 {build|install|init|start|stop|restart|reload|status|logs|doctor|run|check|version|health|uninstall}
 
 Environment:
   MINI_ASTRA_PREFIX  install prefix (default: /usr/local)
@@ -61,6 +61,12 @@ case "${1:-}" in
     start|stop|restart|status) systemctl "$1" "$SERVICE" ;;
     reload) systemctl reload "$SERVICE" 2>/dev/null || systemctl kill -s HUP "$SERVICE" ;;
     logs) journalctl -fu "$SERVICE" ;;
+    doctor)
+        if [ -x "$SCRIPT_DIR/scripts/doctor.sh" ]; then
+            exec bash "$SCRIPT_DIR/scripts/doctor.sh"
+        fi
+        exec bash /usr/local/bin/mini-astra-doctor
+        ;;
     run) exec "$BIN" "${2:-$CONFIG}" ;;
     check)
         test -r "${2:-$CONFIG}" || { echo "Config not found: ${2:-$CONFIG}" >&2; exit 1; }

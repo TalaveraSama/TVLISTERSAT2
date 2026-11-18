@@ -51,13 +51,43 @@ install -m 0755 ./astra "$BIN"
 install -m 0755 ./mini-astra "$CLI"
 install -m 0644 ./scripts/mini-astra.lua "$CONFIG"
 install -m 0644 ./systemd/mini-astra.service "/etc/systemd/system/$SERVICE.service"
+install -m 0755 ./scripts/doctor.sh "$PREFIX/bin/mini-astra-doctor"
 chown mini-astra:mini-astra "$STATE_DIR" "$CONFIG"
+
+# El servidor aborta si el puerto ya esta ocupado. Detectarlo antes de arrancar.
+WANT_PORT="${MINI_ASTRA_PORT:-8000}"
+DROPIN_DIR="/etc/systemd/system/$SERVICE.service.d"
+port_busy() {
+    command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -q ":$1 "
+}
+CHOSEN_PORT="$WANT_PORT"
+if port_busy "$WANT_PORT"; then
+    log "puerto $WANT_PORT ocupado; buscando uno libre"
+    for candidate in 8080 8081 8088 8090 9000 9080; do
+        if ! port_busy "$candidate"; then CHOSEN_PORT="$candidate"; break; fi
+    done
+    if [ "$CHOSEN_PORT" = "$WANT_PORT" ]; then
+        fatal "no hay puerto libre entre 8000/8080/8081/8088/8090/9000/9080; libera uno o usa MINI_ASTRA_PORT"
+    fi
+    install -d "$DROPIN_DIR"
+    printf '[Service]\nEnvironment=MINI_ASTRA_PORT=%s\n' "$CHOSEN_PORT" \
+        > "$DROPIN_DIR/port.conf"
+    log "usando puerto $CHOSEN_PORT (configurado en $DROPIN_DIR/port.conf)"
+fi
 
 systemctl daemon-reload
 systemctl enable --now "$SERVICE"
+
+sleep 2
+if ! systemctl is-active --quiet "$SERVICE"; then
+    log "el servicio no quedo activo; ejecutando diagnostico"
+    bash ./scripts/doctor.sh || true
+    fatal "instalación completada pero el servicio no arrancó"
+fi
 
 log "instalación completada"
 log "binario: $BIN"
 log "configuración: $CONFIG"
 log "servicio: $SERVICE"
-log "health: http://127.0.0.1:8000/healthz"
+log "health: http://127.0.0.1:$CHOSEN_PORT/healthz"
+log "diagnóstico: sudo $PREFIX/bin/mini-astra-doctor"

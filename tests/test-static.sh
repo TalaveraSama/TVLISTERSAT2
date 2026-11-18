@@ -2,7 +2,7 @@
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
-for file in README.md BUILDING-UBUNTU.md configure.sh mini-astra install.sh uninstall.sh scripts/mini-astra.lua systemd/mini-astra.service .github/workflows/release.yml; do
+for file in README.md BUILDING-UBUNTU.md configure.sh mini-astra install.sh uninstall.sh scripts/doctor.sh scripts/mini-astra.lua systemd/mini-astra.service .github/workflows/release.yml; do
     test -f "$ROOT/$file" || { echo "Missing required file: $file" >&2; exit 1; }
 done
 
